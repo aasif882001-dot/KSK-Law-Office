@@ -1,5 +1,4 @@
 
-
 name: Build KSK Law Office APK
 
 on:
@@ -25,7 +24,7 @@ jobs:
         run: unzip -o ksk_law_office_app_prototype.zip -d .
 
       - name: Build APK
-        working-directory: ksk_law_office_app
+        working-directory: ./ksk_law_office_app
         run: |
           flutter create --platforms=android --project-name=ksk_law_office --org=in.ksklaw .
           flutter pub get
