@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function hasProfile() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function activeUser() {
+      return hasProfile() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+    function officeAdmin() {
+      return activeUser() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+          in ['mainAdmin', 'coAdmin', 'admin'];
+    }
+    function assignedToCaller() {
+      return activeUser() &&
+        resource.data.assignedUid == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow get: if signedIn() && (request.auth.uid == userId || officeAdmin());
+      allow list: if officeAdmin();
+      allow create, update, delete: if officeAdmin();
+    }
+
+    match /cases/{recordId} {
+      allow read: if officeAdmin() || assignedToCaller();
+      allow create, delete: if officeAdmin();
+      allow update: if officeAdmin() ||
+        (assignedToCaller() &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['status', 'updatedAt']));
+    }
+
+    match /tasks/{recordId} {
+      allow read: if officeAdmin() || assignedToCaller();
+      allow create, delete: if officeAdmin();
+      allow update: if officeAdmin() ||
+        (assignedToCaller() &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['status', 'updatedAt']));
+    }
+
+    match /hearings/{recordId} {
+      allow read: if officeAdmin() || assignedToCaller();
+      allow create, update, delete: if officeAdmin();
+    }
+
+    match /clients/{recordId} {
+      allow read, write: if officeAdmin();
+    }
+
+    match /entries/{recordId} {
+      allow read, write: if officeAdmin();
+    }
+
+    match /auditLogs/{recordId} {
+      allow read: if officeAdmin();
+      allow create: if activeUser() &&
+        request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
