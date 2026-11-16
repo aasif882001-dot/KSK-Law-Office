@@ -159,7 +159,7 @@ class _LoginPageState extends State<LoginPage> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Account approval required'),
-            content: SelectableText('Your mobile number is verified, but your office account is not approved yet.\n\nShare this Firebase User ID with the Main Admin to create your advocate profile:\n\n\${user.uid}'),
+            content: SelectableText('Your mobile number is verified, but your office account is not approved yet.\n\nShare this Firebase User ID with the Main Admin to create your advocate profile:\n\n${user.uid}'),
             actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
           ),
         );
@@ -173,7 +173,7 @@ class _LoginPageState extends State<LoginPage> {
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() { verifying = false; sending = false; error = e.message ?? e.code; });
     } on FirebaseException catch (e) {
-      if (mounted) setState(() { verifying = false; sending = false; error = 'Firebase database access error: \${e.message ?? e.code}. Firestore security rules may need setup.'; });
+      if (mounted) setState(() { verifying = false; sending = false; error = 'Firebase database access error: ${e.message ?? e.code}. Firestore security rules may need setup.'; });
     } catch (e) {
       if (mounted) setState(() { verifying = false; sending = false; error = e.toString(); });
     }
@@ -241,7 +241,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final pages = <Widget>[dashboard(), tasksPage(), casesPage(), hearingsPage(), if (isAdmin) officePage()];
     return Scaffold(
-      appBar: AppBar(title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('KSK LAW OFFICE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: .6)), Text(tabs[tab], style: const TextStyle(fontSize: 12, color: blue))]), actions: [IconButton(tooltip: 'Sign out', onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage())), icon: const Icon(Icons.logout))]),
+      appBar: AppBar(title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('KSK LAW OFFICE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: .6)), Text(tabs[tab], style: const TextStyle(fontSize: 12, color: blue))]), actions: [IconButton(tooltip: 'Sign out', onPressed: () async { await FirebaseAuth.instance.signOut(); if (!context.mounted) return; Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage())); }, icon: const Icon(Icons.logout))]),
       body: pages[tab],
       floatingActionButton: _fab(),
       bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: [
