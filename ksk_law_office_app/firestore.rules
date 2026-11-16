@@ -25,7 +25,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || officeAdmin());
       allow list: if officeAdmin();
-      allow create, update, delete: if officeAdmin();
+      allow create: if officeAdmin();
+      allow update: if officeAdmin() &&
+        (resource.data.role != 'mainAdmin' ||
+         (request.resource.data.role == 'mainAdmin' && request.resource.data.active == true));
+      allow delete: if officeAdmin() && resource.data.role != 'mainAdmin';
     }
 
     match /cases/{recordId} {
