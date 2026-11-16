@@ -1,0 +1,27 @@
+// TEMPLATE ONLY – review and adapt with the final authentication and data model.
+// Expected user document: /users/{uid} with { role: 'admin' | 'advocate', active: true }
+// Expected task document includes assignedToUid and createdByUid.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function activeUser() { return signedIn() && userDoc().data.active == true; }
+    function isAdmin() { return activeUser() && userDoc().data.role == 'admin'; }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if false; // Provision users/roles through a trusted admin backend.
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAdmin() || (activeUser() && resource.data.assignedToUid == request.auth.uid);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (activeUser()
+        && resource.data.assignedToUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completionRemarks', 'updatedAt']));
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
