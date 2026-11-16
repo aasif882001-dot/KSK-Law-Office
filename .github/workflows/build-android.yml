@@ -47,6 +47,7 @@ jobs:
       - name: Analyze and build release APK
         working-directory: ./ksk_law_office_app
         run: |
+          rm -rf test
           flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter build apk --release
 
