@@ -39,7 +39,7 @@ class OfficeData {
     entries = _read('entries', []);
   }
 
-  static String _date(DateTime d) => '\${d.year.toString().padLeft(4, '0')}-\${d.month.toString().padLeft(2, '0')}-\${d.day.toString().padLeft(2, '0')}';
+  static String _date(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   static List<Map<String, dynamic>> _read(String key, List<Map<String, dynamic>> fallback) {
     final raw = _prefs.getString(key);
     if (raw == null) return fallback.map((e) => Map<String, dynamic>.from(e)).toList();
@@ -170,11 +170,11 @@ class _HomePageState extends State<HomePage> {
     final upcoming = visibleHearings.where((h) => _isUpcoming(h['date'])).toList()..sort((a,b) => a['date'].toString().compareTo(b['date'].toString()));
     final income = _sum('Income'), expense = _sum('Expense');
     return ListView(padding: const EdgeInsets.all(16), children: [
-      Text('Hello, \${widget.advocateName}', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold, color: navy)),
+      Text('Hello, ${widget.advocateName}', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold, color: navy)),
       Text(DateTime.now().toString().split(' ').first, style: const TextStyle(color: Colors.black54)),
       const SizedBox(height: 18),
       GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.55, children: [
-        stat('Total tasks', '\${visibleTasks.length}', Icons.assignment, navy), stat('Pending', '\${countTasks('Pending')}', Icons.pending_actions, Colors.orange.shade800), stat('Cases', '\${OfficeData.cases.length}', Icons.folder, blue), stat('Upcoming hearings', '\${upcoming.length}', Icons.event, Colors.deepPurple),
+        stat('Total tasks', '${visibleTasks.length}', Icons.assignment, navy), stat('Pending', '${countTasks('Pending')}', Icons.pending_actions, Colors.orange.shade800), stat('Cases', '${OfficeData.cases.length}', Icons.folder, blue), stat('Upcoming hearings', '${upcoming.length}', Icons.event, Colors.deepPurple),
       ]),
       const SizedBox(height: 20),
       const Text('Upcoming hearing dates', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -196,11 +196,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget stat(String label, String value, IconData icon, Color color) => Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Icon(icon, color: color), Text(value, style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: color)), Text(label, style: const TextStyle(color: Colors.black54))])));
-  Widget _moneyRow(String label, double amount, Color color, {bool bold = false}) => Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text(label, style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal))), Text('₹\${amount.toStringAsFixed(2)}', style: TextStyle(color: color, fontWeight: FontWeight.bold))]));
+  Widget _moneyRow(String label, double amount, Color color, {bool bold = false}) => Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text(label, style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal))), Text('₹${amount.toStringAsFixed(2)}', style: TextStyle(color: color, fontWeight: FontWeight.bold))]));
   double _sum(String type) => OfficeData.entries.where((e) => e['type'] == type).fold<double>(0.0, (v,e) => v + (double.tryParse(e['amount'].toString()) ?? 0));
 
   Widget tasksPage() => ListView(padding: const EdgeInsets.all(16), children: [
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Task assignments', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('\${visibleTasks.length} total')]),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Task assignments', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('${visibleTasks.length} total')]),
     const SizedBox(height: 12),
     if (visibleTasks.isEmpty) const Text('No tasks to display.'),
     ...visibleTasks.map(_taskCard),
@@ -208,10 +208,10 @@ class _HomePageState extends State<HomePage> {
 
   Widget _taskCard(Map<String, dynamic> task) => Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: Text(task['title'].toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), _chip(task['status'].toString())]),
-    const SizedBox(height: 8), Text('Assigned to: \${task['assignee']}', style: const TextStyle(color: Colors.black54)),
-    if ((task['caseNumber'] ?? '').toString().isNotEmpty) Text('Case: \${task['caseNumber']}', style: const TextStyle(color: Colors.black54)),
+    const SizedBox(height: 8), Text('Assigned to: ${task['assignee']}', style: const TextStyle(color: Colors.black54)),
+    if ((task['caseNumber'] ?? '').toString().isNotEmpty) Text('Case: ${task['caseNumber']}', style: const TextStyle(color: Colors.black54)),
     if ((task['notes'] ?? '').toString().isNotEmpty) Text(task['notes'].toString()),
-    const SizedBox(height: 5), Row(children: [const Icon(Icons.event, size: 16, color: blue), const SizedBox(width: 5), Expanded(child: Text('Due: \${task['dueDate']}')), Text('\${task['priority']} priority', style: TextStyle(fontWeight: FontWeight.w600, color: task['priority'] == 'High' ? Colors.red.shade700 : Colors.orange.shade800))]),
+    const SizedBox(height: 5), Row(children: [const Icon(Icons.event, size: 16, color: blue), const SizedBox(width: 5), Expanded(child: Text('Due: ${task['dueDate']}')), Text('${task['priority']} priority', style: TextStyle(fontWeight: FontWeight.w600, color: task['priority'] == 'High' ? Colors.red.shade700 : Colors.orange.shade800))]),
     const Divider(height: 20), Row(mainAxisAlignment: MainAxisAlignment.end, children: [
       if (isAdmin) TextButton(onPressed: () => _delete(OfficeData.tasks, task), child: const Text('Delete')),
       OutlinedButton.icon(onPressed: () => _updateTask(task), icon: const Icon(Icons.update, size: 17), label: const Text('Update status')),
@@ -231,13 +231,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget casesPage() => ListView(padding: const EdgeInsets.all(16), children: [
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Case management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('\${OfficeData.cases.length} cases')]),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Case management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('${OfficeData.cases.length} cases')]),
     const SizedBox(height: 12),
     if (OfficeData.cases.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No cases added. Admin can add case details using the + button.'))),
     ...OfficeData.cases.map((c) => Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
       leading: const CircleAvatar(backgroundColor: paleBlue, child: Icon(Icons.folder, color: navy)),
-      title: Text('\${c['caseNumber']} · \${c['title']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text('Court: \${c['court']}\nParty: \${c['party']}\nAdvocate: \${c['advocate']}\nNext hearing: \${c['nextHearing']}'),
+      title: Text('${c['caseNumber']} · ${c['title']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text('Court: ${c['court']}\nParty: ${c['party']}\nAdvocate: ${c['advocate']}\nNext hearing: ${c['nextHearing']}'),
       isThreeLine: true,
       trailing: isAdmin ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(OfficeData.cases,c)) : null,
     ))),
@@ -265,8 +265,8 @@ class _HomePageState extends State<HomePage> {
     final urgent = days != null && days <= 3 && days >= 0;
     return Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
       leading: CircleAvatar(backgroundColor: urgent ? const Color(0xFFFFF0E4) : paleBlue, child: Icon(Icons.event, color: urgent ? Colors.deepOrange : navy)),
-      title: Text('\${h['caseNumber']} · \${h['purpose']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text('\${h['date']} at \${h['time']}\n\${h['court']} · \${h['advocate']}'),
+      title: Text('${h['caseNumber']} · ${h['purpose']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text('${h['date']} at ${h['time']}\n${h['court']} · ${h['advocate']}'),
       isThreeLine: true,
       trailing: isAdmin ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(OfficeData.hearings,h)) : (urgent ? const Icon(Icons.notifications_active, color: Colors.deepOrange) : null),
     ));
@@ -277,7 +277,7 @@ class _HomePageState extends State<HomePage> {
     const SizedBox(height: 12),
     _sectionHeader('Clients', Icons.people, () => _add('client')),
     if (OfficeData.clients.isEmpty) const Text('No clients added yet.'),
-    ...OfficeData.clients.map((c) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(c['name'].toString()), subtitle: Text('Phone: \${c['phone']}\nEmail: \${c['email']}'), isThreeLine: true, trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(OfficeData.clients,c))))),
+    ...OfficeData.clients.map((c) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(c['name'].toString()), subtitle: Text('Phone: ${c['phone']}\nEmail: ${c['email']}'), isThreeLine: true, trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(OfficeData.clients,c))))),
     const Divider(height: 28),
     _sectionHeader('Office accounts', Icons.account_balance_wallet, () => _add('entry')),
     Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(children: [
@@ -287,13 +287,13 @@ class _HomePageState extends State<HomePage> {
     ]))),
     ...OfficeData.entries.reversed.take(10).map((e) => Card(child: ListTile(
       leading: Icon(e['type'] == 'Income' ? Icons.arrow_downward : Icons.arrow_upward, color: e['type'] == 'Income' ? Colors.green : Colors.red),
-      title: Text(e['description'].toString()), subtitle: Text('\${e['date']} · \${e['category']}'),
-      trailing: Text('₹\${e['amount']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      title: Text(e['description'].toString()), subtitle: Text('${e['date']} · ${e['category']}'),
+      trailing: Text('₹${e['amount']}', style: const TextStyle(fontWeight: FontWeight.bold)),
     ))),
     const Divider(height: 28),
     _sectionHeader('Advocates', Icons.groups, () => _add('advocate')),
-    Text('\${OfficeData.advocates.length}/10 advocates'),
-    ...OfficeData.advocates.map((a) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person_outline)), title: Text(a['name'].toString()), subtitle: Text(a['email'].toString()), trailing: Text('\${OfficeData.tasks.where((t) => t['assignee'] == a['name']).length} tasks')))),
+    Text('${OfficeData.advocates.length}/10 advocates'),
+    ...OfficeData.advocates.map((a) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person_outline)), title: Text(a['name'].toString()), subtitle: Text(a['email'].toString()), trailing: Text('${OfficeData.tasks.where((t) => t['assignee'] == a['name']).length} tasks')))),
     const SizedBox(height: 20),
     const Card(child: Padding(padding: EdgeInsets.all(14), child: Text('Reports are calculated from the records stored on this device. Export, cloud sync, user permissions and automatic notifications require further production setup.'))),
   ]);
@@ -314,11 +314,11 @@ class _HomePageState extends State<HomePage> {
     };
     final labels = specs[kind]!;
     final initial = <String>[
-      if (kind == 'task') ...['','\${OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['name']}','\${DateTime.now().toString().split(' ').first}','Medium','',''],
-      if (kind == 'case') ...['','','','','\${OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['name']}','',''],
-      if (kind == 'hearing') ...['','','\${DateTime.now().toString().split(' ').first}','10:00 AM','','\${OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['name']}'],
+      if (kind == 'task') ...['','${OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['name']}','${DateTime.now().toString().split(' ').first}','Medium','',''],
+      if (kind == 'case') ...['','','','','${OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['name']}','',''],
+      if (kind == 'hearing') ...['','','${DateTime.now().toString().split(' ').first}','10:00 AM','','${OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['name']}'],
       if (kind == 'client') ...['','','','',''],
-      if (kind == 'entry') ...['Income','','General','\${DateTime.now().toString().split(' ').first}',''],
+      if (kind == 'entry') ...['Income','','General','${DateTime.now().toString().split(' ').first}',''],
       if (kind == 'advocate') ...['',''],
     ];
     final values = await showDialog<List<String>>(context: context, builder: (_) => RecordDialog(title: _kindTitle(kind), labels: labels, initial: initial));
