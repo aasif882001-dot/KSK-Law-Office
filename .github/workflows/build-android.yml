@@ -33,6 +33,21 @@ jobs:
         working-directory: ./ksk_law_office_app
         run: flutter create --platforms=android --project-name=lawoffice120 --org=com.ksklaw .
 
+      - name: Configure Google Services for Firebase
+        working-directory: ./ksk_law_office_app
+        run: |
+          test -s android/app/google-services.json
+          if [ -f android/settings.gradle.kts ]; then
+            sed -i '/^plugins {/a\\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
+            sed -i '/^plugins {/a\\    id("com.google.gms.google-services")' android/app/build.gradle.kts
+          elif [ -f android/settings.gradle ]; then
+            sed -i '/^plugins {/a\\    id "com.google.gms.google-services" version "4.4.2" apply false' android/settings.gradle
+            sed -i '/^plugins {/a\\    id "com.google.gms.google-services"' android/app/build.gradle
+          else
+            echo "Could not find generated Android Gradle plugin files"
+            exit 1
+          fi
+
       - name: Install dependencies
         working-directory: ./ksk_law_office_app
         run: flutter pub get
