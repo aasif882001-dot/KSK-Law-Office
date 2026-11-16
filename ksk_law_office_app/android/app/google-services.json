@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "427585767093",
+    "project_id": "ksk-law-office",
+    "storage_bucket": "ksk-law-office.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:427585767093:android:b65da155be9af384b320fc",
+        "android_client_info": {
+          "package_name": "com.ksklaw.lawoffice120"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARpCZR1L-HGQ-6vrsP0tNictR6-UfPAR4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
