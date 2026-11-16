@@ -197,7 +197,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget stat(String label, String value, IconData icon, Color color) => Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Icon(icon, color: color), Text(value, style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: color)), Text(label, style: const TextStyle(color: Colors.black54))])));
   Widget _moneyRow(String label, double amount, Color color, {bool bold = false}) => Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text(label, style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal))), Text('₹\${amount.toStringAsFixed(2)}', style: TextStyle(color: color, fontWeight: FontWeight.bold))]));
-  double _sum(String type) => OfficeData.entries.where((e) => e['type'] == type).fold<double>(0, (v,e) => v + (double.tryParse(e['amount'].toString()) ?? 0));
+  double _sum(String type) => OfficeData.entries.where((e) => e['type'] == type).fold<double>(0.0, (v,e) => v + (double.tryParse(e['amount'].toString()) ?? 0));
 
   Widget tasksPage() => ListView(padding: const EdgeInsets.all(16), children: [
     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Task assignments', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('\${visibleTasks.length} total')]),
@@ -340,7 +340,7 @@ class _HomePageState extends State<HomePage> {
         record = {'name':values[0], 'phone':values[1], 'email':values[2], 'address':values[3], 'notes':values[4]};
         OfficeData.clients.add(record); break;
       case 'entry':
-        record = {'type':values[0].toLowerCase().startsWith('e')?'Income':'Expense', 'amount':values[1], 'category':values[2], 'date':values[3], 'description':values[4]};
+        record = {'type':values[0].toLowerCase().startsWith('i')?'Income':'Expense', 'amount':values[1], 'category':values[2], 'date':values[3], 'description':values[4]};
         OfficeData.entries.add(record); break;
       default:
         record = {'name':values[0], 'email':values[1]};
