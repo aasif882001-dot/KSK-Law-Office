@@ -135,9 +135,11 @@ class HomePage extends StatefulWidget {
 }
 class _HomePageState extends State<HomePage> {
   int tab = 0;
+  bool todayOnly = false;
   bool get isAdmin => widget.role == UserRole.admin;
   List<Map<String, dynamic>> get visibleTasks => isAdmin ? OfficeData.tasks : OfficeData.tasks.where((t) => t['assignee'] == widget.advocateName).toList();
   List<Map<String, dynamic>> get visibleHearings => isAdmin ? OfficeData.hearings : OfficeData.hearings.where((h) => h['advocate'] == widget.advocateName).toList();
+  List<Map<String, dynamic>> get visibleCases => isAdmin ? OfficeData.cases : OfficeData.cases.where((c) => c['advocate'] == widget.advocateName).toList();
   int countTasks(String status) => visibleTasks.where((t) => t['status'] == status).length;
   List<String> get tabs => isAdmin ? ['Home', 'Tasks', 'Cases', 'Hearings', 'Office'] : ['Home', 'Tasks', 'Cases', 'Hearings'];
 
@@ -231,10 +233,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget casesPage() => ListView(padding: const EdgeInsets.all(16), children: [
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Case management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('${OfficeData.cases.length} cases')]),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Case management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('${visibleCases.length} cases')]),
     const SizedBox(height: 12),
-    if (OfficeData.cases.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No cases added. Admin can add case details using the + button.'))),
-    ...OfficeData.cases.map((c) => Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
+    if (visibleCases.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No cases added. Admin can add case details using the + button.'))),
+    ...visibleCases.map((c) => Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
       leading: const CircleAvatar(backgroundColor: paleBlue, child: Icon(Icons.folder, color: navy)),
       title: Text('${c['caseNumber']} · ${c['title']}', style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text('Court: ${c['court']}\nParty: ${c['party']}\nAdvocate: ${c['advocate']}\nNext hearing: ${c['nextHearing']}'),
@@ -247,10 +249,12 @@ class _HomePageState extends State<HomePage> {
     final list = [...visibleHearings]..sort((a,b) => a['date'].toString().compareTo(b['date'].toString()));
     return ListView(padding: const EdgeInsets.all(16), children: [
       const Text('Hearing date reminders', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)),
-      const SizedBox(height: 5), const Text('Upcoming dates are highlighted when you open the app. Keep notifications enabled on your device for app alerts.'),
+      const SizedBox(height: 5), const Text('Hearing schedule for all assigned cases.'),
+      Wrap(spacing: 8, children: [FilterChip(label: const Text('All dates'), selected: !todayOnly, onSelected: (_) => setState(() => todayOnly = false)), FilterChip(label: const Text('Today only'), selected: todayOnly, onSelected: (_) => setState(() => todayOnly = true))]),
       const SizedBox(height: 12),
       if (list.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No hearing dates recorded.'))),
-      ...list.map(_hearingCard),
+      ...(todayOnly ? list.where((h) => h['date'].toString() == OfficeData._date(DateTime.now())) : list).map(_hearingCard),
+      if (todayOnly && !list.any((h) => h['date'].toString() == OfficeData._date(DateTime.now()))) const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No hearings scheduled for today.'))),
     ]);
   }
   bool _isUpcoming(dynamic date) {
