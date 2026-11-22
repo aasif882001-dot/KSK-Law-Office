@@ -1,0 +1,8 @@
+{
+  "project_info": {"project_number":"427585767093","project_id":"ksk-law-office","storage_bucket":"ksk-law-office.firebasestorage.app"},
+  "client": [
+    {"client_info":{"mobilesdk_app_id":"1:427585767093:android:fb9a94126420a664b320fc","android_client_info":{"package_name":"com.ksklaw.lawoffice110"}},"oauth_client":[{"client_id":"427585767093-6310vlt120c00v8emdlgj6asor49nr6n.apps.googleusercontent.com","client_type":3}],"api_key":[{"current_key":"AIzaSyARpCZR1L-HGQ-6vrsP0tNictR6-UfPAR4"}],"services":{"appinvite_service":{"other_platform_oauth_client":[{"client_id":"427585767093-6310vlt120c00v8emdlgj6asor49nr6n.apps.googleusercontent.com","client_type":3}]}}},
+    {"client_info":{"mobilesdk_app_id":"1:427585767093:android:b65da155be9af384b320fc","android_client_info":{"package_name":"com.ksklaw.lawoffice120"}},"oauth_client":[{"client_id":"427585767093-ov3btb6fir4r8cn14ro0ratuogm8tjtg.apps.googleusercontent.com","client_type":1,"android_info":{"package_name":"com.ksklaw.lawoffice120","certificate_hash":"5829faedd5a4a570d5f263d3b08daf1940036e65"}},{"client_id":"427585767093-6310vlt120c00v8emdlgj6asor49nr6n.apps.googleusercontent.com","client_type":3}],"api_key":[{"current_key":"AIzaSyARpCZR1L-HGQ-6vrsP0tNictR6-UfPAR4"}],"services":{"appinvite_service":{"other_platform_oauth_client":[{"client_id":"427585767093-6310vlt120c00v8emdlgj6asor49nr6n.apps.googleusercontent.com","client_type":3}]}}}
+  ],
+  "configuration_version":"1"
+}
