@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   await OfficeData.load();
   runApp(const KskLawOfficeApp());
 }
@@ -88,41 +92,131 @@ class LoginPage extends StatefulWidget {
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
-class _LoginPageState extends State<LoginPage> {
-  UserRole role = UserRole.admin;
-  String selectedAdvocate = OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['name'].toString();
-  final email = TextEditingController(text: 'admin@ksklaw.in');
-  final password = TextEditingController(text: 'demo123');
-  String? error;
 
-  void login() {
-    final entered = email.text.trim().toLowerCase();
-    final valid = role == UserRole.admin
-      ? entered == 'admin@ksklaw.in' && password.text == 'demo123'
-      : OfficeData.advocates.any((a) => a['email'].toString().toLowerCase() == entered) && password.text == 'demo123';
-    if (!valid) { setState(() => error = 'Demo login details do not match.'); return; }
-    final advocate = OfficeData.advocates.firstWhere((a) => a['email'].toString().toLowerCase() == entered, orElse: () => {'name': selectedAdvocate});
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: role == UserRole.admin ? 'Office Admin' : advocate['name'].toString())));
+class _LoginPageState extends State<LoginPage> {
+  final phone = TextEditingController(text: '+91');
+  final otp = TextEditingController();
+  String? verificationId;
+  String? error;
+  bool sending = false;
+  bool verifying = false;
+
+  Future<void> _sendOtp() async {
+    final number = phone.text.trim().replaceAll(' ', '');
+    if (!number.startsWith('+') || number.length < 10) {
+      setState(() => error = 'Enter mobile number with country code, for example +91XXXXXXXXXX.');
+      return;
+    }
+    setState(() { sending = true; error = null; });
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: number,
+        timeout: const Duration(seconds: 60),
+        verificationCompleted: (credential) async { await _finishSignIn(credential); },
+        verificationFailed: (e) {
+          if (mounted) setState(() { sending = false; error = e.message ?? 'OTP could not be sent. Check Firebase phone authentication and app verification settings.'; });
+        },
+        codeSent: (id, resendToken) {
+          if (mounted) setState(() { verificationId = id; sending = false; error = 'OTP sent. Enter the 6-digit code.'; });
+        },
+        codeAutoRetrievalTimeout: (id) { verificationId = id; },
+      );
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() { sending = false; error = e.message ?? e.code; });
+    } catch (e) {
+      if (mounted) setState(() { sending = false; error = 'Unable to start phone verification: $e'; });
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    if (verificationId == null || otp.text.trim().length < 6) {
+      setState(() => error = 'Enter the 6-digit OTP received by SMS.');
+      return;
+    }
+    setState(() { verifying = true; error = null; });
+    try {
+      final credential = PhoneAuthProvider.credential(verificationId: verificationId!, smsCode: otp.text.trim());
+      await _finishSignIn(credential);
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() { verifying = false; error = e.message ?? 'OTP verification failed.'; });
+    } catch (e) {
+      if (mounted) setState(() { verifying = false; error = 'Verification failed: $e'; });
+    }
+  }
+
+  Future<void> _finishSignIn(PhoneAuthCredential credential) async {
+    try {
+      final result = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = result.user;
+      if (user == null) throw Exception('Firebase did not return a user account.');
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = profile.data();
+      if (!profile.exists || data == null || data['active'] != true) {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        setState(() { verifying = false; sending = false; });
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Account approval required'),
+            content: SelectableText('Your mobile number is verified, but your office account is not approved yet.\n\nShare this Firebase User ID with the Main Admin to create your advocate profile:\n\n${user.uid}'),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+          ),
+        );
+        return;
+      }
+      final roleText = (data['role'] ?? 'advocate').toString();
+      final role = ['mainAdmin', 'coAdmin', 'admin'].contains(roleText) ? UserRole.admin : UserRole.advocate;
+      final name = (data['name'] ?? user.phoneNumber ?? 'Advocate').toString();
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: name)));
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() { verifying = false; sending = false; error = e.message ?? e.code; });
+    } on FirebaseException catch (e) {
+      if (mounted) setState(() { verifying = false; sending = false; error = 'Firebase database access error: ${e.message ?? e.code}. Firestore security rules may need setup.'; });
+    } catch (e) {
+      if (mounted) setState(() { verifying = false; sending = false; error = e.toString(); });
+    }
   }
 
   @override
+  void dispose() { phone.dispose(); otp.dispose(); super.dispose(); }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
-    body: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const SizedBox(height: 24),
-      Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: navy, borderRadius: BorderRadius.circular(22)), child: const Column(children: [Icon(Icons.account_balance, color: Colors.white, size: 44), SizedBox(height: 12), Text('KSK LAW OFFICE', style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold, letterSpacing: 1.1)), SizedBox(height: 5), Text('ADVOCATE OFFICE MANAGER', style: TextStyle(color: Color(0xFFD6E7FA), letterSpacing: 1.5, fontSize: 11))])),
-      const SizedBox(height: 28), const Text('Welcome back', style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: navy)), const SizedBox(height: 6), const Text('Sign in to manage your office work.'), const SizedBox(height: 22),
-      SegmentedButton<UserRole>(segments: const [ButtonSegment(value: UserRole.admin, label: Text('Admin'), icon: Icon(Icons.admin_panel_settings)), ButtonSegment(value: UserRole.advocate, label: Text('Advocate'), icon: Icon(Icons.person))], selected: {role}, onSelectionChanged: (v) => setState(() { role = v.first; error = null; email.text = role == UserRole.admin ? 'admin@ksklaw.in' : (OfficeData.advocates.isEmpty ? '' : OfficeData.advocates.first['email'].toString()); })),
-      const SizedBox(height: 18),
-      if (role == UserRole.advocate) ...[
-        DropdownButtonFormField<String>(value: OfficeData.advocates.any((a) => a['name'] == selectedAdvocate) ? selectedAdvocate : null, decoration: const InputDecoration(labelText: 'Select advocate'), items: OfficeData.advocates.map((a) => DropdownMenuItem(value: a['name'].toString(), child: Text(a['name'].toString()))).toList(), onChanged: (v) => setState(() { selectedAdvocate = v ?? ''; final a = OfficeData.advocates.firstWhere((x) => x['name'] == v); email.text = a['email'].toString(); })),
-        const SizedBox(height: 14),
-      ],
-      TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.mail_outline))), const SizedBox(height: 14),
-      TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline))),
-      if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
-      const SizedBox(height: 20), FilledButton(onPressed: login, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: const Text('Sign in')),
-      const SizedBox(height: 18), const Text('Prototype demo password: demo123\nAdmin: admin@ksklaw.in\nAdvocates: use the email shown in the advocate list', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black54)),
-    ])))),
+    body: Center(child: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 24),
+          Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: navy, borderRadius: BorderRadius.circular(22)), child: const Column(children: [
+            Icon(Icons.account_balance, color: Colors.white, size: 44),
+            SizedBox(height: 12),
+            Text('KSK LAW OFFICE', style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+            SizedBox(height: 5),
+            Text('SECURE MOBILE LOGIN', style: TextStyle(color: Color(0xFFD6E7FA), letterSpacing: 1.5, fontSize: 11)),
+          ])),
+          const SizedBox(height: 28),
+          const Text('Welcome', style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: navy)),
+          const SizedBox(height: 6),
+          const Text('Sign in using your registered mobile number.'),
+          const SizedBox(height: 22),
+          TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile number with country code', hintText: '+91XXXXXXXXXX', prefixIcon: Icon(Icons.phone_android))),
+          const SizedBox(height: 14),
+          if (verificationId != null) TextField(controller: otp, keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit OTP', prefixIcon: Icon(Icons.sms_outlined))),
+          if (error != null) Padding(padding: const EdgeInsets.only(top: 8, bottom: 8), child: Text(error!, style: TextStyle(color: error!.startsWith('OTP sent') ? Colors.green.shade700 : Colors.red.shade700))),
+          const SizedBox(height: 12),
+          if (verificationId == null)
+            FilledButton(onPressed: sending ? null : _sendOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(sending ? 'Sending OTP...' : 'Send OTP'))
+          else
+            FilledButton(onPressed: verifying ? null : _verifyOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Verifying...' : 'Verify OTP and sign in')),
+          if (verificationId != null) TextButton(onPressed: sending ? null : () => setState(() { verificationId = null; otp.clear(); error = null; }), child: const Text('Change mobile number')),
+          const SizedBox(height: 18),
+          const Text('Only Main Admin-approved mobile numbers can access office records.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black54)),
+        ],
+      )),
+    )),
   );
 }
 
@@ -135,9 +229,11 @@ class HomePage extends StatefulWidget {
 }
 class _HomePageState extends State<HomePage> {
   int tab = 0;
+  bool todayOnly = false;
   bool get isAdmin => widget.role == UserRole.admin;
   List<Map<String, dynamic>> get visibleTasks => isAdmin ? OfficeData.tasks : OfficeData.tasks.where((t) => t['assignee'] == widget.advocateName).toList();
   List<Map<String, dynamic>> get visibleHearings => isAdmin ? OfficeData.hearings : OfficeData.hearings.where((h) => h['advocate'] == widget.advocateName).toList();
+  List<Map<String, dynamic>> get visibleCases => isAdmin ? OfficeData.cases : OfficeData.cases.where((c) => c['advocate'] == widget.advocateName).toList();
   int countTasks(String status) => visibleTasks.where((t) => t['status'] == status).length;
   List<String> get tabs => isAdmin ? ['Home', 'Tasks', 'Cases', 'Hearings', 'Office'] : ['Home', 'Tasks', 'Cases', 'Hearings'];
 
@@ -145,7 +241,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final pages = <Widget>[dashboard(), tasksPage(), casesPage(), hearingsPage(), if (isAdmin) officePage()];
     return Scaffold(
-      appBar: AppBar(title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('KSK LAW OFFICE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: .6)), Text(tabs[tab], style: const TextStyle(fontSize: 12, color: blue))]), actions: [IconButton(tooltip: 'Sign out', onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage())), icon: const Icon(Icons.logout))]),
+      appBar: AppBar(title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('KSK LAW OFFICE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: .6)), Text(tabs[tab], style: const TextStyle(fontSize: 12, color: blue))]), actions: [IconButton(tooltip: 'Sign out', onPressed: () async { await FirebaseAuth.instance.signOut(); if (!context.mounted) return; Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage())); }, icon: const Icon(Icons.logout))]),
       body: pages[tab],
       floatingActionButton: _fab(),
       bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: [
@@ -231,10 +327,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget casesPage() => ListView(padding: const EdgeInsets.all(16), children: [
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Case management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('${OfficeData.cases.length} cases')]),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Case management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)), Text('${visibleCases.length} cases')]),
     const SizedBox(height: 12),
-    if (OfficeData.cases.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No cases added. Admin can add case details using the + button.'))),
-    ...OfficeData.cases.map((c) => Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
+    if (visibleCases.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No cases added. Admin can add case details using the + button.'))),
+    ...visibleCases.map((c) => Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(
       leading: const CircleAvatar(backgroundColor: paleBlue, child: Icon(Icons.folder, color: navy)),
       title: Text('${c['caseNumber']} · ${c['title']}', style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text('Court: ${c['court']}\nParty: ${c['party']}\nAdvocate: ${c['advocate']}\nNext hearing: ${c['nextHearing']}'),
@@ -247,10 +343,12 @@ class _HomePageState extends State<HomePage> {
     final list = [...visibleHearings]..sort((a,b) => a['date'].toString().compareTo(b['date'].toString()));
     return ListView(padding: const EdgeInsets.all(16), children: [
       const Text('Hearing date reminders', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)),
-      const SizedBox(height: 5), const Text('Upcoming dates are highlighted when you open the app. Keep notifications enabled on your device for app alerts.'),
+      const SizedBox(height: 5), const Text('Hearing schedule for all assigned cases.'),
+      Wrap(spacing: 8, children: [FilterChip(label: const Text('All dates'), selected: !todayOnly, onSelected: (_) => setState(() => todayOnly = false)), FilterChip(label: const Text('Today only'), selected: todayOnly, onSelected: (_) => setState(() => todayOnly = true))]),
       const SizedBox(height: 12),
       if (list.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('No hearing dates recorded.'))),
-      ...list.map(_hearingCard),
+      ...(todayOnly ? list.where((h) => h['date'].toString() == OfficeData._date(DateTime.now())) : list).map(_hearingCard),
+      if (todayOnly && !list.any((h) => h['date'].toString() == OfficeData._date(DateTime.now()))) const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No hearings scheduled for today.'))),
     ]);
   }
   bool _isUpcoming(dynamic date) {
