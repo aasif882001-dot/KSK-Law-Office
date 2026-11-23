@@ -96,10 +96,56 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final phone = TextEditingController(text: '+91');
   final otp = TextEditingController();
+  final adminUsername = TextEditingController();
+  final adminPassword = TextEditingController();
   String? verificationId;
   String? error;
   bool sending = false;
   bool verifying = false;
+  bool adminMode = false;
+
+  static const String _mainAdminEmail = 'aasif882001@gmail.com';
+
+  Future<void> _adminSignIn() async {
+    final username = adminUsername.text.trim();
+    final password = adminPassword.text;
+    if (username != 'ksk25' || password.isEmpty) {
+      setState(() => error = 'Enter the Main Admin username and password.');
+      return;
+    }
+    setState(() { verifying = true; error = null; });
+    try {
+      final result = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _mainAdminEmail,
+        password: password,
+      );
+      final user = result.user;
+      if (user == null) throw Exception('Firebase did not return a user account.');
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = profile.data();
+      if (!profile.exists || data == null || data['active'] != true || data['role'] != 'mainAdmin') {
+        await FirebaseAuth.instance.signOut();
+        throw Exception('Main Admin profile is not approved. The Firebase users profile must have active=true and role=mainAdmin.');
+      }
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: UserRole.admin, advocateName: (data['name'] ?? 'Main Admin').toString())));
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() { verifying = false; error = e.code == 'invalid-credential' || e.code == 'wrong-password' ? 'Incorrect username or password.' : (e.message ?? e.code); });
+    } on FirebaseException catch (e) {
+      if (mounted) setState(() { verifying = false; error = 'Firebase database access error: ${e.message ?? e.code}'; });
+    } catch (e) {
+      if (mounted) setState(() { verifying = false; error = e.toString().replaceFirst('Exception: ', ''); });
+    }
+  }
+
+  Future<void> _sendAdminPasswordReset() async {
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: _mainAdminEmail);
+      if (mounted) setState(() => error = 'Password reset email sent to the registered Main Admin email.');
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => error = e.message ?? e.code);
+    }
+  }
 
   Future<void> _sendOtp() async {
     final number = phone.text.trim().replaceAll(' ', '');
@@ -200,20 +246,29 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 28),
           const Text('Welcome', style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: navy)),
           const SizedBox(height: 6),
-          const Text('Sign in using your registered mobile number.'),
+          Text(adminMode ? 'Main Admin sign in.' : 'Sign in using your registered mobile number.'),
           const SizedBox(height: 22),
-          TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile number with country code', hintText: '+91XXXXXXXXXX', prefixIcon: Icon(Icons.phone_android))),
-          const SizedBox(height: 14),
-          if (verificationId != null) TextField(controller: otp, keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit OTP', prefixIcon: Icon(Icons.sms_outlined))),
-          if (error != null) Padding(padding: const EdgeInsets.only(top: 8, bottom: 8), child: Text(error!, style: TextStyle(color: error!.startsWith('OTP sent') ? Colors.green.shade700 : Colors.red.shade700))),
-          const SizedBox(height: 12),
-          if (verificationId == null)
-            FilledButton(onPressed: sending ? null : _sendOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(sending ? 'Sending OTP...' : 'Send OTP'))
-          else
-            FilledButton(onPressed: verifying ? null : _verifyOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Verifying...' : 'Verify OTP and sign in')),
-          if (verificationId != null) TextButton(onPressed: sending ? null : () => setState(() { verificationId = null; otp.clear(); error = null; }), child: const Text('Change mobile number')),
-          const SizedBox(height: 18),
-          const Text('Only Main Admin-approved mobile numbers can access office records.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black54)),
+          if (adminMode) ...[
+            TextField(controller: adminUsername, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Main Admin username', hintText: 'ksk25', prefixIcon: Icon(Icons.admin_panel_settings))),
+            const SizedBox(height: 14),
+            TextField(controller: adminPassword, obscureText: true, onSubmitted: (_) => verifying ? null : _adminSignIn(), decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline))),
+            Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _sendAdminPasswordReset, child: const Text('Forgot password? Send reset email'))),
+            FilledButton(onPressed: verifying ? null : _adminSignIn, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Signing in...' : 'Main Admin sign in')),
+          ] else ...[
+            TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile number with country code', hintText: '+91XXXXXXXXXX', prefixIcon: Icon(Icons.phone_android))),
+            const SizedBox(height: 14),
+            if (verificationId != null) TextField(controller: otp, keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit OTP', prefixIcon: Icon(Icons.sms_outlined))),
+            if (verificationId == null)
+              FilledButton(onPressed: sending ? null : _sendOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(sending ? 'Sending OTP...' : 'Send OTP'))
+            else
+              FilledButton(onPressed: verifying ? null : _verifyOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Verifying...' : 'Verify OTP and sign in')),
+            if (verificationId != null) TextButton(onPressed: sending ? null : () => setState(() { verificationId = null; otp.clear(); error = null; }), child: const Text('Change mobile number')),
+          ],
+          if (error != null) Padding(padding: const EdgeInsets.only(top: 8, bottom: 8), child: Text(error!, style: TextStyle(color: error!.startsWith('OTP sent') || error!.startsWith('Password reset email sent') ? Colors.green.shade700 : Colors.red.shade700))),
+          const SizedBox(height: 10),
+          TextButton(onPressed: () => setState(() { adminMode = !adminMode; error = null; verificationId = null; }), child: Text(adminMode ? 'Use advocate mobile login' : 'Main Admin login')),
+          const SizedBox(height: 8),
+          Text(adminMode ? 'Main Admin access is verified against the approved Firebase profile.' : 'Only Main Admin-approved mobile numbers can access office records.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.black54)),
         ],
       )),
     )),
