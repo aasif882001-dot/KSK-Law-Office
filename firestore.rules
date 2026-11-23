@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isMainAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userProfile().active == true
+        && userProfile().role == 'mainAdmin';
+    }
+
+    match /users/{userId} {
+      allow get: if signedIn() && (request.auth.uid == userId || isMainAdmin());
+      allow list: if isMainAdmin();
+
+      // A newly authenticated advocate may create only their own inactive,
+      // non-privileged registration profile.
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'role', 'active', 'createdAt'])
+        && request.resource.data.role == 'advocate'
+        && request.resource.data.active == false
+        && request.resource.data.name is string
+        && request.resource.data.phone is string;
+
+      // Only the permanent Main Admin may approve, change roles, or reject profiles.
+      // The Main Admin cannot accidentally demote their own account.
+      allow update: if isMainAdmin()
+        && (resource.data.role != 'mainAdmin'
+            || request.resource.data.role == 'mainAdmin');
+      allow delete: if isMainAdmin() && resource.data.role != 'mainAdmin';
+    }
+
+    // Office records remain blocked from cloud access until their per-advocate
+    // assignment model and corresponding rules are implemented and tested.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
