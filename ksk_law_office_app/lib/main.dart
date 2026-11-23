@@ -128,7 +128,7 @@ class _LoginPageState extends State<LoginPage> {
         throw Exception('Main Admin profile is not approved. The Firebase users profile must have active=true and role=mainAdmin.');
       }
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: UserRole.admin, advocateName: (data['name'] ?? 'Main Admin').toString())));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: UserRole.admin, advocateName: (data['name'] ?? 'Main Admin').toString(), isMainAdmin: true)));
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() { verifying = false; error = e.code == 'invalid-credential' || e.code == 'wrong-password' ? 'Incorrect username or password.' : (e.message ?? e.code); });
     } on FirebaseException catch (e) {
@@ -197,6 +197,15 @@ class _LoginPageState extends State<LoginPage> {
       if (user == null) throw Exception('Firebase did not return a user account.');
       final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final data = profile.data();
+      if (!profile.exists) {
+        await profile.reference.set({
+          'name': user.displayName ?? user.phoneNumber ?? 'Pending advocate',
+          'phone': user.phoneNumber ?? '',
+          'role': 'advocate',
+          'active': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
       if (!profile.exists || data == null || data['active'] != true) {
         await FirebaseAuth.instance.signOut();
         if (!mounted) return;
@@ -215,7 +224,7 @@ class _LoginPageState extends State<LoginPage> {
       final role = ['mainAdmin', 'coAdmin', 'admin'].contains(roleText) ? UserRole.admin : UserRole.advocate;
       final name = (data['name'] ?? user.phoneNumber ?? 'Advocate').toString();
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: name)));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: name, isMainAdmin: roleText == 'mainAdmin')));
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() { verifying = false; sending = false; error = e.message ?? e.code; });
     } on FirebaseException catch (e) {
@@ -276,9 +285,10 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.role, required this.advocateName});
+  const HomePage({super.key, required this.role, required this.advocateName, this.isMainAdmin = false});
   final UserRole role;
   final String advocateName;
+  final bool isMainAdmin;
   @override
   State<HomePage> createState() => _HomePageState();
 }
@@ -428,6 +438,13 @@ class _HomePageState extends State<HomePage> {
   Widget officePage() => ListView(padding: const EdgeInsets.all(16), children: [
     const Text('Office management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)),
     const SizedBox(height: 12),
+    if (widget.isMainAdmin) Card(child: ListTile(
+      leading: const CircleAvatar(backgroundColor: paleBlue, child: Icon(Icons.verified_user, color: navy)),
+      title: const Text('Advocate approval', style: TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: const Text('Review new mobile registrations and grant office access'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvocateApprovalsPage())),
+    )),
     _sectionHeader('Clients', Icons.people, () => _add('client')),
     if (OfficeData.clients.isEmpty) const Text('No clients added yet.'),
     ...OfficeData.clients.map((c) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(c['name'].toString()), subtitle: Text('Phone: ${c['phone']}\nEmail: ${c['email']}'), isThreeLine: true, trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(OfficeData.clients,c))))),
@@ -507,6 +524,80 @@ class _HomePageState extends State<HomePage> {
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Delete record?'), content: const Text('This record will be removed from this device.'), actions: [TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Delete'))]));
     if (ok == true) { list.remove(item); await OfficeData.save(); setState(() {}); }
   }
+}
+
+class AdvocateApprovalsPage extends StatelessWidget {
+  const AdvocateApprovalsPage({super.key});
+
+  Future<void> _approve(BuildContext context, DocumentSnapshot<Map<String, dynamic>> doc, String role) async {
+    try {
+      await doc.reference.update({
+        'active': true,
+        'role': role,
+        'approvedAt': FieldValue.serverTimestamp(),
+      });
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Advocate access approved.')));
+    } on FirebaseException catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Approval failed: ${e.message ?? e.code}')));
+    }
+  }
+
+  Future<void> _reject(BuildContext context, DocumentSnapshot<Map<String, dynamic>> doc) async {
+    final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Reject registration?'),
+      content: const Text('This will remove the pending office profile. The person can register again later.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reject')),
+      ],
+    ));
+    if (confirm != true) return;
+    try {
+      await doc.reference.delete();
+    } on FirebaseException catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Rejection failed: ${e.message ?? e.code}')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Advocate approvals')),
+    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('users').where('active', isEqualTo: false).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Could not load pending registrations. Check Firestore rules.\n${snapshot.error}')));
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return const Center(child: Text('No pending advocate registrations.'));
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final doc = docs[index];
+            final data = doc.data();
+            final name = (data['name'] ?? 'Advocate').toString();
+            final phone = (data['phone'] ?? '').toString();
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  if (phone.isNotEmpty) Text(phone, style: const TextStyle(color: Colors.black54)),
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 8, runSpacing: 4, children: [
+                    FilledButton(onPressed: () => _approve(context, doc, 'advocate'), child: const Text('Approve advocate')),
+                    OutlinedButton(onPressed: () => _approve(context, doc, 'admin'), child: const Text('Approve as admin')),
+                    TextButton(onPressed: () => _reject(context, doc), child: const Text('Reject')),
+                  ]),
+                ]),
+              ),
+            );
+          },
+        );
+      },
+    ),
+  );
 }
 
 class RecordDialog extends StatefulWidget {
