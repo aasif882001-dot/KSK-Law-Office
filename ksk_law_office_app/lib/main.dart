@@ -251,7 +251,7 @@ class _LoginPageState extends State<LoginPage> {
           if (adminMode) ...[
             TextField(controller: adminUsername, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Main Admin username', hintText: 'ksk25', prefixIcon: Icon(Icons.admin_panel_settings))),
             const SizedBox(height: 14),
-            TextField(controller: adminPassword, obscureText: true, onSubmitted: (_) => verifying ? null : _adminSignIn(), decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline))),
+            TextField(controller: adminPassword, obscureText: true, onSubmitted: (_) { if (!verifying) _adminSignIn(); }, decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline))),
             Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _sendAdminPasswordReset, child: const Text('Forgot password? Send reset email'))),
             FilledButton(onPressed: verifying ? null : _adminSignIn, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Signing in...' : 'Main Admin sign in')),
           ] else ...[
