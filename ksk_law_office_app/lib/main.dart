@@ -607,7 +607,7 @@ class _HomePageState extends State<HomePage> {
     Text('${OfficeData.advocates.length} active office accounts'),
     ...OfficeData.advocates.map((a) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person_outline)), title: Text(a['name'].toString()), subtitle: Text(a['email'].toString()), trailing: Text('${OfficeData.tasks.where((t) => t['assignee'] == a['name']).length} tasks')))),
     const SizedBox(height: 20),
-    const Card(child: Padding(padding: EdgeInsets.all(14), child: Text('Reports are calculated from the records stored on this device. Export, cloud sync, user permissions and automatic notifications require further production setup.'))),
+    const Card(child: Padding(padding: EdgeInsets.all(14), child: Text('Tasks, cases, hearings, clients and office accounts sync through Firestore with role-based access. Export and automatic notifications require further setup.'))),
   ]);
   Widget _sectionHeader(String title, IconData icon, VoidCallback add) => Row(children: [Icon(icon,color:navy), const SizedBox(width:8), Expanded(child: Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold))), TextButton.icon(onPressed:add,icon:const Icon(Icons.add),label:const Text('Add'))]);
 
