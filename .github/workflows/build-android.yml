@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ksk-law-office-v1-1-1
+  group: ksk-law-office-v1-1-2
   cancel-in-progress: true
 
 jobs:
@@ -89,7 +89,7 @@ jobs:
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt" dump badging "$APK" | grep -E "package: name='com.ksklaw.lawoffice111'|versionCode='3'|versionName='1.1.1'"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt" dump badging "$APK" | grep -E "package: name='com.ksklaw.lawoffice111'|versionCode='4'|versionName='1.1.2'"
           APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
           "$APKSIGNER" verify "$APK"
           "$APKSIGNER" verify --print-certs "$APK"
