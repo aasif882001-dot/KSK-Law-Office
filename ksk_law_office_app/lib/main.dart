@@ -127,6 +127,31 @@ class OfficeData {
     return subscriptions;
   }
 
+  static Future<String> createCloudRecord(String collection, Map<String, dynamic> record) async {
+    final data = Map<String, dynamic>.from(record)
+      ..remove('_id')
+      ..['createdByUid'] = FirebaseAuth.instance.currentUser!.uid
+      ..['createdAt'] = FieldValue.serverTimestamp();
+    final ref = await FirebaseFirestore.instance.collection(collection).add(data);
+    record['_id'] = ref.id;
+    return ref.id;
+  }
+
+  static Future<void> updateCloudRecord(String collection, Map<String, dynamic> record, Map<String, dynamic> updates) async {
+    final id = record['_id']?.toString();
+    if (id == null || id.isEmpty) return;
+    await FirebaseFirestore.instance.collection(collection).doc(id).update({
+      ...updates,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Future<void> deleteCloudRecord(String collection, Map<String, dynamic> record) async {
+    final id = record['_id']?.toString();
+    if (id == null || id.isEmpty) return;
+    await FirebaseFirestore.instance.collection(collection).doc(id).delete();
+  }
+
   static String? advocateUid(String name) {
     for (final advocate in advocates) {
       if (advocate['name'].toString().trim().toLowerCase() == name.trim().toLowerCase()) {
@@ -486,7 +511,17 @@ class _HomePageState extends State<HomePage> {
       const Padding(padding: EdgeInsets.all(16), child: Text('Update task status', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
       for (final s in ['Pending','In progress','Completed']) ListTile(title: Text(s), trailing: task['status'] == s ? const Icon(Icons.check, color: blue) : null, onTap: () => Navigator.pop(ctx,s)),
     ])));
-    if (value != null) { task['status'] = value; await OfficeData.save(); setState(() {}); }
+    if (value != null) {
+      try {
+        await OfficeData.updateCloudRecord('tasks', task, {'status': value});
+      } on FirebaseException catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cloud status update failed: ${e.message ?? e.code}')));
+        return;
+      }
+      task['status'] = value;
+      await OfficeData.save();
+      setState(() {});
+    }
   }
 
   Widget casesPage() => ListView(padding: const EdgeInsets.all(16), children: [
@@ -594,15 +629,21 @@ class _HomePageState extends State<HomePage> {
     Map<String,dynamic> record;
     switch(kind) {
       case 'task':
-        record = {'title':values[0], 'assignee':values[1], 'dueDate':values[2], 'priority':values[3].isEmpty?'Medium':values[3], 'caseNumber':values[4], 'notes':values[5], 'status':'Pending'};
+        final assignedUid = OfficeData.advocateUid(values[1]);
+        if (assignedUid == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose an approved advocate name from the active office advocate list.'))); return; }
+        record = {'title':values[0], 'assignee':values[1], 'assigneeUid':assignedUid, 'dueDate':values[2], 'priority':values[3].isEmpty?'Medium':values[3], 'caseNumber':values[4], 'notes':values[5], 'status':'Pending'};
         OfficeData.tasks.insert(0,record); break;
       case 'case':
-        record = {'caseNumber':values[0], 'title':values[1], 'court':values[2], 'party':values[3], 'advocate':values[4], 'nextHearing':values[5], 'notes':values[6]};
+        final assignedUid = OfficeData.advocateUid(values[4]);
+        if (assignedUid == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose an approved advocate name from the active office advocate list.'))); return; }
+        record = {'caseNumber':values[0], 'title':values[1], 'court':values[2], 'party':values[3], 'advocate':values[4], 'advocateUid':assignedUid, 'nextHearing':values[5], 'notes':values[6]};
         OfficeData.cases.insert(0,record);
         if (values[5].trim().isNotEmpty) OfficeData.hearings.add({'caseNumber':values[0], 'court':values[2], 'date':values[5], 'time':'', 'purpose':'Next hearing', 'advocate':values[4]});
         break;
       case 'hearing':
-        record = {'caseNumber':values[0], 'court':values[1], 'date':values[2], 'time':values[3], 'purpose':values[4], 'advocate':values[5]};
+        final assignedUid = OfficeData.advocateUid(values[5]);
+        if (assignedUid == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose an approved advocate name from the active office advocate list.'))); return; }
+        record = {'caseNumber':values[0], 'court':values[1], 'date':values[2], 'time':values[3], 'purpose':values[4], 'advocate':values[5], 'advocateUid':assignedUid};
         OfficeData.hearings.add(record); break;
       case 'client':
         record = {'name':values[0], 'phone':values[1], 'email':values[2], 'address':values[3], 'notes':values[4]};
@@ -614,13 +655,48 @@ class _HomePageState extends State<HomePage> {
         record = {'name':values[0], 'email':values[1]};
         OfficeData.advocates.add(record);
     }
+    try {
+      if (kind == 'case') {
+        await OfficeData.createCloudRecord('cases', record);
+        if (values[5].trim().isNotEmpty && OfficeData.hearings.isNotEmpty) {
+          await OfficeData.createCloudRecord('hearings', OfficeData.hearings.last);
+        }
+      } else if (kind == 'task') {
+        await OfficeData.createCloudRecord('tasks', record);
+      } else if (kind == 'hearing') {
+        await OfficeData.createCloudRecord('hearings', record);
+      } else if (kind == 'client') {
+        await OfficeData.createCloudRecord('clients', record);
+      } else if (kind == 'entry') {
+        await OfficeData.createCloudRecord('entries', record);
+      }
+    } on FirebaseException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cloud save failed. This record is still only on this device: ${e.message ?? e.code}')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cloud save failed. This record is still only on this device: $e')));
+    }
     await OfficeData.save();
     setState(() {});
   }
   String _kindTitle(String kind) => {'task':'Assign new task','case':'Add case','hearing':'Add hearing date','client':'Add client','entry':'Add account entry','advocate':'Add advocate'}[kind]!;
   Future<void> _delete(List<Map<String,dynamic>> list, Map<String,dynamic> item) async {
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Delete record?'), content: const Text('This record will be removed from this device.'), actions: [TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Delete'))]));
-    if (ok == true) { list.remove(item); await OfficeData.save(); setState(() {}); }
+    if (ok == true) {
+      final collection = identical(list, OfficeData.tasks) ? 'tasks'
+        : identical(list, OfficeData.cases) ? 'cases'
+        : identical(list, OfficeData.hearings) ? 'hearings'
+        : identical(list, OfficeData.clients) ? 'clients'
+        : identical(list, OfficeData.entries) ? 'entries' : null;
+      try {
+        if (collection != null) await OfficeData.deleteCloudRecord(collection, item);
+      } on FirebaseException catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cloud delete failed: ${e.message ?? e.code}')));
+        return;
+      }
+      list.remove(item);
+      await OfficeData.save();
+      setState(() {});
+    }
   }
 }
 
