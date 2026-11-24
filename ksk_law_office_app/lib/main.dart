@@ -141,9 +141,15 @@ class OfficeData {
       ..remove('_id')
       ..['createdByUid'] = FirebaseAuth.instance.currentUser!.uid
       ..['createdAt'] = FieldValue.serverTimestamp();
-    final ref = await FirebaseFirestore.instance.collection(collection).add(data);
+    final ref = FirebaseFirestore.instance.collection(collection).doc();
     record['_id'] = ref.id;
-    return ref.id;
+    try {
+      await ref.set(data);
+      return ref.id;
+    } catch (_) {
+      record.remove('_id');
+      rethrow;
+    }
   }
 
   static Future<void> updateCloudRecord(String collection, Map<String, dynamic> record, Map<String, dynamic> updates) async {
