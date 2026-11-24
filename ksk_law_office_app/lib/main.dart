@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -60,6 +61,80 @@ class OfficeData {
     await _prefs.setString('hearings', jsonEncode(hearings));
     await _prefs.setString('clients', jsonEncode(clients));
     await _prefs.setString('entries', jsonEncode(entries));
+  }
+
+  static void _mergeCloud(List<Map<String, dynamic>> target, QuerySnapshot<Map<String, dynamic>> snapshot) {
+    // Keep older device-only records intact; replace only records previously loaded from Firestore.
+    final localOnly = target.where((item) => item['_id'] == null).toList();
+    final cloud = snapshot.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      data.remove('createdAt');
+      data.remove('updatedAt');
+      data['_id'] = doc.id;
+      return data;
+    }).toList();
+    target
+      ..clear()
+      ..addAll(localOnly)
+      ..addAll(cloud);
+  }
+
+  static List<StreamSubscription<dynamic>> startRealtimeSync({
+    required String userId,
+    required bool isAdmin,
+    required VoidCallback onChanged,
+    required void Function(String message) onError,
+  }) {
+    final db = FirebaseFirestore.instance;
+    final subscriptions = <StreamSubscription<dynamic>>[];
+
+    void listenRecords(String collection, List<Map<String, dynamic>> target, {String? assignmentField}) {
+      Query<Map<String, dynamic>> query = db.collection(collection);
+      if (!isAdmin && assignmentField != null) {
+        query = query.where(assignmentField, isEqualTo: userId);
+      }
+      subscriptions.add(query.snapshots().listen((snapshot) {
+        _mergeCloud(target, snapshot);
+        onChanged();
+      }, onError: (Object error) {
+        onError('Could not sync $collection: $error');
+      }));
+    }
+
+    listenRecords('tasks', tasks, assignmentField: 'assigneeUid');
+    listenRecords('cases', cases, assignmentField: 'advocateUid');
+    listenRecords('hearings', hearings, assignmentField: 'advocateUid');
+
+    if (isAdmin) {
+      listenRecords('clients', clients);
+      listenRecords('entries', entries);
+      subscriptions.add(db.collection('users').where('active', isEqualTo: true).snapshots().listen((snapshot) {
+        advocates = snapshot.docs.map((doc) {
+          final data = Map<String, dynamic>.from(doc.data());
+          return {
+            'uid': doc.id,
+            'name': (data['name'] ?? data['phone'] ?? 'Advocate').toString(),
+            'email': (data['email'] ?? '').toString(),
+            'phone': (data['phone'] ?? '').toString(),
+            'role': (data['role'] ?? 'advocate').toString(),
+          };
+        }).where((a) => a['role'] != 'mainAdmin').toList();
+        onChanged();
+      }, onError: (Object error) {
+        onError('Could not sync advocate profiles: $error');
+      }));
+    }
+    return subscriptions;
+  }
+
+  static String? advocateUid(String name) {
+    for (final advocate in advocates) {
+      if (advocate['name'].toString().trim().toLowerCase() == name.trim().toLowerCase()) {
+        final uid = advocate['uid']?.toString();
+        if (uid != null && uid.isNotEmpty) return uid;
+      }
+    }
+    return null;
   }
 }
 
@@ -128,7 +203,7 @@ class _LoginPageState extends State<LoginPage> {
         throw Exception('Main Admin profile is not approved. The Firebase users profile must have active=true and role=mainAdmin.');
       }
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: UserRole.admin, advocateName: (data['name'] ?? 'Main Admin').toString(), isMainAdmin: true)));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: UserRole.admin, advocateName: (data['name'] ?? 'Main Admin').toString(), isMainAdmin: true, userId: user.uid)));
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() { verifying = false; error = e.code == 'invalid-credential' || e.code == 'wrong-password' ? 'Incorrect username or password.' : (e.message ?? e.code); });
     } on FirebaseException catch (e) {
@@ -224,7 +299,7 @@ class _LoginPageState extends State<LoginPage> {
       final role = ['mainAdmin', 'coAdmin', 'admin'].contains(roleText) ? UserRole.admin : UserRole.advocate;
       final name = (data['name'] ?? user.phoneNumber ?? 'Advocate').toString();
       if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: name, isMainAdmin: roleText == 'mainAdmin')));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: name, isMainAdmin: roleText == 'mainAdmin', userId: user.uid)));
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() { verifying = false; sending = false; error = e.message ?? e.code; });
     } on FirebaseException catch (e) {
@@ -285,14 +360,37 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.role, required this.advocateName, this.isMainAdmin = false});
+  const HomePage({super.key, required this.role, required this.advocateName, required this.userId, this.isMainAdmin = false});
   final UserRole role;
   final String advocateName;
+  final String userId;
   final bool isMainAdmin;
   @override
   State<HomePage> createState() => _HomePageState();
 }
 class _HomePageState extends State<HomePage> {
+  late final List<StreamSubscription<dynamic>> _syncSubscriptions;
+  String? _syncError;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSubscriptions = OfficeData.startRealtimeSync(
+      userId: widget.userId,
+      isAdmin: widget.role == UserRole.admin,
+      onChanged: () { if (mounted) setState(() {}); },
+      onError: (message) { if (mounted) setState(() => _syncError = message); },
+    );
+  }
+
+  @override
+  void dispose() {
+    for (final subscription in _syncSubscriptions) {
+      subscription.cancel();
+    }
+    super.dispose();
+  }
+
   int tab = 0;
   bool todayOnly = false;
   bool get isAdmin => widget.role == UserRole.admin;
@@ -307,7 +405,7 @@ class _HomePageState extends State<HomePage> {
     final pages = <Widget>[dashboard(), tasksPage(), casesPage(), hearingsPage(), if (isAdmin) officePage()];
     return Scaffold(
       appBar: AppBar(title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('KSK LAW OFFICE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: .6)), Text(tabs[tab], style: const TextStyle(fontSize: 12, color: blue))]), actions: [IconButton(tooltip: 'Sign out', onPressed: () async { await FirebaseAuth.instance.signOut(); if (!context.mounted) return; Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage())); }, icon: const Icon(Icons.logout))]),
-      body: pages[tab],
+      body: Column(children: [if (_syncError != null) Material(color: Colors.orange.shade50, child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [const Icon(Icons.cloud_off, size: 18), const SizedBox(width: 8), Expanded(child: Text(_syncError!, style: const TextStyle(fontSize: 12)))]))), Expanded(child: pages[tab])]),
       floatingActionButton: _fab(),
       bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: [
         const NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Home'),
