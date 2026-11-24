@@ -209,193 +209,165 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final phone = TextEditingController(text: '+91');
-  final otp = TextEditingController();
+  final advocateId = TextEditingController();
+  final advocatePassword = TextEditingController();
   final adminUsername = TextEditingController();
   final adminPassword = TextEditingController();
-  String? verificationId;
   String? error;
-  bool sending = false;
   bool verifying = false;
   bool adminMode = false;
-
   static const String _mainAdminEmail = 'aasif882001@gmail.com';
 
   Future<void> _adminSignIn() async {
-    final username = adminUsername.text.trim();
-    final password = adminPassword.text;
-    if (username != 'ksk25' || password.isEmpty) {
-      setState(() => error = 'Enter the Main Admin username and password.');
-      return;
+    if (adminUsername.text.trim() != 'ksk25' || adminPassword.text.isEmpty) {
+      setState(() => error = 'Enter the Main Admin username and password.'); return;
     }
     setState(() { verifying = true; error = null; });
     try {
-      final result = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _mainAdminEmail,
-        password: password,
-      );
-      final user = result.user;
-      if (user == null) throw Exception('Firebase did not return a user account.');
+      final result = await FirebaseAuth.instance.signInWithEmailAndPassword(email: _mainAdminEmail, password: adminPassword.text);
+      final user = result.user!;
       final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final data = profile.data();
       if (!profile.exists || data == null || data['active'] != true || data['role'] != 'mainAdmin') {
         await FirebaseAuth.instance.signOut();
-        throw Exception('Main Admin profile is not approved. The Firebase users profile must have active=true and role=mainAdmin.');
+        throw Exception('Main Admin profile is not approved.');
       }
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: UserRole.admin, advocateName: (data['name'] ?? 'Main Admin').toString(), isMainAdmin: true, userId: user.uid)));
     } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() { verifying = false; error = e.code == 'invalid-credential' || e.code == 'wrong-password' ? 'Incorrect username or password.' : (e.message ?? e.code); });
-    } on FirebaseException catch (e) {
-      if (mounted) setState(() { verifying = false; error = 'Firebase database access error: ${e.message ?? e.code}'; });
-    } catch (e) {
-      if (mounted) setState(() { verifying = false; error = e.toString().replaceFirst('Exception: ', ''); });
+      if (mounted) setState(() { verifying = false; error = e.message ?? e.code; });
+    } catch (e) { if (mounted) setState(() { verifying = false; error = e.toString().replaceFirst('Exception: ', ''); }); }
+  }
+
+  Future<void> _advocateSignIn() async {
+    final id = advocateId.text.trim().toLowerCase();
+    if (!RegExp(r'^[a-z0-9._-]{3,30}$').hasMatch(id) || advocatePassword.text.isEmpty) {
+      setState(() => error = 'Enter the Advocate ID and password provided by Main Admin.'); return;
     }
+    setState(() { verifying = true; error = null; });
+    try {
+      final result = await FirebaseAuth.instance.signInWithEmailAndPassword(email: '$id@advocates.ksklaw.in', password: advocatePassword.text);
+      final user = result.user!;
+      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = profile.data();
+      if (!profile.exists || data == null || data['active'] != true || data['role'] == 'mainAdmin') {
+        await FirebaseAuth.instance.signOut();
+        throw Exception('This Advocate ID is not active. Contact Main Admin.');
+      }
+      final roleText = (data['role'] ?? 'advocate').toString();
+      final role = ['admin', 'coAdmin'].contains(roleText) ? UserRole.admin : UserRole.advocate;
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: (data['name'] ?? id).toString(), isMainAdmin: false, userId: user.uid)));
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() { verifying = false; error = e.code == 'invalid-credential' || e.code == 'wrong-password' || e.code == 'user-not-found' ? 'Incorrect Advocate ID or password.' : (e.message ?? e.code); });
+    } catch (e) { if (mounted) setState(() { verifying = false; error = e.toString().replaceFirst('Exception: ', ''); }); }
   }
 
   Future<void> _sendAdminPasswordReset() async {
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: _mainAdminEmail);
       if (mounted) setState(() => error = 'Password reset email sent to the registered Main Admin email.');
-    } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() => error = e.message ?? e.code);
-    }
-  }
-
-  Future<void> _sendOtp() async {
-    final number = phone.text.trim().replaceAll(' ', '');
-    if (!number.startsWith('+') || number.length < 10) {
-      setState(() => error = 'Enter mobile number with country code, for example +91XXXXXXXXXX.');
-      return;
-    }
-    setState(() { sending = true; error = null; });
-    try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: number,
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (credential) async { await _finishSignIn(credential); },
-        verificationFailed: (e) {
-          if (mounted) setState(() { sending = false; error = e.message ?? 'OTP could not be sent. Check Firebase phone authentication and app verification settings.'; });
-        },
-        codeSent: (id, resendToken) {
-          if (mounted) setState(() { verificationId = id; sending = false; error = 'OTP sent. Enter the 6-digit code.'; });
-        },
-        codeAutoRetrievalTimeout: (id) { verificationId = id; },
-      );
-    } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() { sending = false; error = e.message ?? e.code; });
-    } catch (e) {
-      if (mounted) setState(() { sending = false; error = 'Unable to start phone verification: $e'; });
-    }
-  }
-
-  Future<void> _verifyOtp() async {
-    if (verificationId == null || otp.text.trim().length < 6) {
-      setState(() => error = 'Enter the 6-digit OTP received by SMS.');
-      return;
-    }
-    setState(() { verifying = true; error = null; });
-    try {
-      final credential = PhoneAuthProvider.credential(verificationId: verificationId!, smsCode: otp.text.trim());
-      await _finishSignIn(credential);
-    } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() { verifying = false; error = e.message ?? 'OTP verification failed.'; });
-    } catch (e) {
-      if (mounted) setState(() { verifying = false; error = 'Verification failed: $e'; });
-    }
-  }
-
-  Future<void> _finishSignIn(PhoneAuthCredential credential) async {
-    try {
-      final result = await FirebaseAuth.instance.signInWithCredential(credential);
-      final user = result.user;
-      if (user == null) throw Exception('Firebase did not return a user account.');
-      final profile = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final data = profile.data();
-      if (!profile.exists) {
-        await profile.reference.set({
-          'name': user.displayName ?? user.phoneNumber ?? 'Pending advocate',
-          'phone': user.phoneNumber ?? '',
-          'role': 'advocate',
-          'active': false,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      }
-      if (!profile.exists || data == null || data['active'] != true) {
-        await FirebaseAuth.instance.signOut();
-        if (!mounted) return;
-        setState(() { verifying = false; sending = false; });
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Account approval required'),
-            content: SelectableText('Your mobile number is verified, but your office account is not approved yet.\n\nShare this Firebase User ID with the Main Admin to create your advocate profile:\n\n${user.uid}'),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
-          ),
-        );
-        return;
-      }
-      final roleText = (data['role'] ?? 'advocate').toString();
-      final role = ['mainAdmin', 'coAdmin', 'admin'].contains(roleText) ? UserRole.admin : UserRole.advocate;
-      final name = (data['name'] ?? user.phoneNumber ?? 'Advocate').toString();
-      if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(role: role, advocateName: name, isMainAdmin: roleText == 'mainAdmin', userId: user.uid)));
-    } on FirebaseAuthException catch (e) {
-      if (mounted) setState(() { verifying = false; sending = false; error = e.message ?? e.code; });
-    } on FirebaseException catch (e) {
-      if (mounted) setState(() { verifying = false; sending = false; error = 'Firebase database access error: ${e.message ?? e.code}. Firestore security rules may need setup.'; });
-    } catch (e) {
-      if (mounted) setState(() { verifying = false; sending = false; error = e.toString(); });
-    }
+    } on FirebaseAuthException catch (e) { if (mounted) setState(() => error = e.message ?? e.code); }
   }
 
   @override
-  void dispose() { phone.dispose(); otp.dispose(); super.dispose(); }
+  void dispose() { advocateId.dispose(); advocatePassword.dispose(); adminUsername.dispose(); adminPassword.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: Center(child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 24),
-          Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: navy, borderRadius: BorderRadius.circular(22)), child: const Column(children: [
-            Icon(Icons.account_balance, color: Colors.white, size: 44),
-            SizedBox(height: 12),
-            Text('KSK LAW OFFICE', style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-            SizedBox(height: 5),
-            Text('SECURE MOBILE LOGIN', style: TextStyle(color: Color(0xFFD6E7FA), letterSpacing: 1.5, fontSize: 11)),
-          ])),
-          const SizedBox(height: 28),
-          const Text('Welcome', style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: navy)),
-          const SizedBox(height: 6),
-          Text(adminMode ? 'Main Admin sign in.' : 'Sign in using your registered mobile number.'),
-          const SizedBox(height: 22),
-          if (adminMode) ...[
-            TextField(controller: adminUsername, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Main Admin username', hintText: 'ksk25', prefixIcon: Icon(Icons.admin_panel_settings))),
-            const SizedBox(height: 14),
-            TextField(controller: adminPassword, obscureText: true, onSubmitted: (_) { if (!verifying) _adminSignIn(); }, decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline))),
-            Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _sendAdminPasswordReset, child: const Text('Forgot password? Send reset email'))),
-            FilledButton(onPressed: verifying ? null : _adminSignIn, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Signing in...' : 'Main Admin sign in')),
-          ] else ...[
-            TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile number with country code', hintText: '+91XXXXXXXXXX', prefixIcon: Icon(Icons.phone_android))),
-            const SizedBox(height: 14),
-            if (verificationId != null) TextField(controller: otp, keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: '6-digit OTP', prefixIcon: Icon(Icons.sms_outlined))),
-            if (verificationId == null)
-              FilledButton(onPressed: sending ? null : _sendOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(sending ? 'Sending OTP...' : 'Send OTP'))
-            else
-              FilledButton(onPressed: verifying ? null : _verifyOtp, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Verifying...' : 'Verify OTP and sign in')),
-            if (verificationId != null) TextButton(onPressed: sending ? null : () => setState(() { verificationId = null; otp.clear(); error = null; }), child: const Text('Change mobile number')),
-          ],
-          if (error != null) Padding(padding: const EdgeInsets.only(top: 8, bottom: 8), child: Text(error!, style: TextStyle(color: error!.startsWith('OTP sent') || error!.startsWith('Password reset email sent') ? Colors.green.shade700 : Colors.red.shade700))),
-          const SizedBox(height: 10),
-          TextButton(onPressed: () => setState(() { adminMode = !adminMode; error = null; verificationId = null; }), child: Text(adminMode ? 'Use advocate mobile login' : 'Main Admin login')),
-          const SizedBox(height: 8),
-          Text(adminMode ? 'Main Admin access is verified against the approved Firebase profile.' : 'Only Main Admin-approved mobile numbers can access office records.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+    body: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 440),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const SizedBox(height: 24),
+        Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: navy, borderRadius: BorderRadius.circular(22)), child: const Column(children: [
+          Icon(Icons.account_balance, color: Colors.white, size: 44), SizedBox(height: 12),
+          Text('KSK LAW OFFICE', style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+          SizedBox(height: 5), Text('SECURE ID & PASSWORD LOGIN', style: TextStyle(color: Color(0xFFD6E7FA), letterSpacing: 1.5, fontSize: 11)),
+        ])),
+        const SizedBox(height: 28), const Text('Welcome', style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: navy)),
+        const SizedBox(height: 6), Text(adminMode ? 'Main Admin sign in.' : 'Use the Advocate ID and password created by Main Admin.'),
+        const SizedBox(height: 22),
+        if (adminMode) ...[
+          TextField(controller: adminUsername, decoration: const InputDecoration(labelText: 'Main Admin username', hintText: 'ksk25', prefixIcon: Icon(Icons.admin_panel_settings))),
+          const SizedBox(height: 14),
+          TextField(controller: adminPassword, obscureText: true, onSubmitted: (_) { if (!verifying) _adminSignIn(); }, decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline))),
+          Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _sendAdminPasswordReset, child: const Text('Forgot password? Send reset email'))),
+          FilledButton(onPressed: verifying ? null : _adminSignIn, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Signing in...' : 'Main Admin sign in')),
+        ] else ...[
+          TextField(controller: advocateId, autocorrect: false, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Advocate ID', hintText: 'Enter ID given by Admin', prefixIcon: Icon(Icons.person_outline))),
+          const SizedBox(height: 14),
+          TextField(controller: advocatePassword, obscureText: true, onSubmitted: (_) { if (!verifying) _advocateSignIn(); }, decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline))),
+          FilledButton(onPressed: verifying ? null : _advocateSignIn, style: FilledButton.styleFrom(backgroundColor: navy, padding: const EdgeInsets.symmetric(vertical: 16)), child: Text(verifying ? 'Signing in...' : 'Advocate sign in')),
         ],
-      )),
-    )),
+        if (error != null) Padding(padding: const EdgeInsets.only(top: 8, bottom: 8), child: Text(error!, style: TextStyle(color: error!.startsWith('Password reset email sent') ? Colors.green.shade700 : Colors.red.shade700))),
+        const SizedBox(height: 10),
+        TextButton(onPressed: () => setState(() { adminMode = !adminMode; error = null; }), child: Text(adminMode ? 'Advocate login' : 'Main Admin login')),
+        const SizedBox(height: 8),
+        Text(adminMode ? 'Main Admin access is verified against the approved Firebase profile.' : 'Only Advocate IDs created and activated by Main Admin can access office records.', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+      ]),
+    ))),
+  );
+}
+
+class AdvocateAccountsPage extends StatefulWidget {
+  const AdvocateAccountsPage({super.key});
+  @override
+  State<AdvocateAccountsPage> createState() => _AdvocateAccountsPageState();
+}
+class _AdvocateAccountsPageState extends State<AdvocateAccountsPage> {
+  final name = TextEditingController();
+  final id = TextEditingController();
+  final password = TextEditingController();
+  bool creating = false;
+
+  Future<void> _createAccount() async {
+    final advocateName = name.text.trim();
+    final loginId = id.text.trim().toLowerCase();
+    final secret = password.text;
+    if (advocateName.isEmpty || !RegExp(r'^[a-z0-9._-]{3,30}$').hasMatch(loginId) || secret.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter name, an ID (3–30 letters/numbers), and a password of at least 6 characters.'))); return;
+    }
+    setState(() => creating = true);
+    try {
+      FirebaseApp secondaryApp;
+      try { secondaryApp = Firebase.app('advocateAccountCreator'); }
+      on FirebaseException { secondaryApp = await Firebase.initializeApp(name: 'advocateAccountCreator', options: Firebase.app().options); }
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      final credential = await secondaryAuth.createUserWithEmailAndPassword(email: '$loginId@advocates.ksklaw.in', password: secret);
+      final newUser = credential.user!;
+      await FirebaseFirestore.instance.collection('users').doc(newUser.uid).set({
+        'name': advocateName, 'loginId': loginId, 'email': '$loginId@advocates.ksklaw.in',
+        'role': 'advocate', 'active': true, 'createdAt': FieldValue.serverTimestamp(),
+        'createdByUid': FirebaseAuth.instance.currentUser!.uid,
+      });
+      await secondaryAuth.signOut();
+      name.clear(); id.clear(); password.clear();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Advocate account created. Login ID: $loginId')));
+    } on FirebaseAuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.code == 'email-already-in-use' ? 'This Advocate ID already exists. Choose another ID.' : (e.message ?? e.code))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create account: $e')));
+    } finally { if (mounted) setState(() => creating = false); }
+  }
+
+  @override
+  void dispose() { name.dispose(); id.dispose(); password.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Create advocate account')),
+    body: ListView(padding: const EdgeInsets.all(16), children: [
+      const Text('Only Main Admin can create advocate login accounts.', style: TextStyle(color: Colors.black54)),
+      const SizedBox(height: 16),
+      TextField(controller: name, decoration: const InputDecoration(labelText: 'Advocate name')),
+      const SizedBox(height: 12),
+      TextField(controller: id, autocorrect: false, decoration: const InputDecoration(labelText: 'Advocate ID', hintText: 'Example: advocate01')),
+      const SizedBox(height: 12),
+      TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Temporary password (minimum 6 characters)')),
+      const SizedBox(height: 18),
+      FilledButton.icon(onPressed: creating ? null : _createAccount, icon: const Icon(Icons.person_add), label: Text(creating ? 'Creating account...' : 'Create advocate account')),
+      const SizedBox(height: 12),
+      const Card(child: Padding(padding: EdgeInsets.all(14), child: Text('Share the Advocate ID and temporary password privately. Passwords are managed by Firebase Authentication and are not stored in office records.'))),
+    ]),
   );
 }
 
@@ -587,11 +559,11 @@ class _HomePageState extends State<HomePage> {
     const Text('Office management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: navy)),
     const SizedBox(height: 12),
     if (widget.isMainAdmin) Card(child: ListTile(
-      leading: const CircleAvatar(backgroundColor: paleBlue, child: Icon(Icons.verified_user, color: navy)),
-      title: const Text('Advocate approval', style: TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: const Text('Review new mobile registrations and grant office access'),
+      leading: const CircleAvatar(backgroundColor: paleBlue, child: Icon(Icons.person_add_alt_1, color: navy)),
+      title: const Text('Create advocate login', style: TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: const Text('Create an Advocate ID and password for office access'),
       trailing: const Icon(Icons.chevron_right),
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvocateApprovalsPage())),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvocateAccountsPage())),
     )),
     _sectionHeader('Clients', Icons.people, () => _add('client')),
     if (OfficeData.clients.isEmpty) const Text('No clients added yet.'),
