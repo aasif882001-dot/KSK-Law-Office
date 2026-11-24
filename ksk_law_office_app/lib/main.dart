@@ -63,9 +63,9 @@ class OfficeData {
     await _prefs.setString('entries', jsonEncode(entries));
   }
 
-  static void _mergeCloud(List<Map<String, dynamic>> target, QuerySnapshot<Map<String, dynamic>> snapshot) {
-    // Keep older device-only records intact; replace only records previously loaded from Firestore.
-    final localOnly = target.where((item) => item['_id'] == null).toList();
+  static void _mergeCloud(List<Map<String, dynamic>> target, QuerySnapshot<Map<String, dynamic>> snapshot, {required bool preserveLocal}) {
+    // Admin devices retain legacy local records; advocate devices receive only server-authorized records.
+    final localOnly = preserveLocal ? target.where((item) => item['_id'] == null).toList() : <Map<String, dynamic>>[];
     final cloud = snapshot.docs.map((doc) {
       final data = Map<String, dynamic>.from(doc.data());
       data.remove('createdAt');
@@ -94,7 +94,7 @@ class OfficeData {
         query = query.where(assignmentField, isEqualTo: userId);
       }
       subscriptions.add(query.snapshots().listen((snapshot) {
-        _mergeCloud(target, snapshot);
+        _mergeCloud(target, snapshot, preserveLocal: isAdmin);
         onChanged();
       }, onError: (Object error) {
         onError('Could not sync $collection: $error');
@@ -519,7 +519,7 @@ class _HomePageState extends State<HomePage> {
         return;
       }
       task['status'] = value;
-      await OfficeData.save();
+      if (isAdmin) await OfficeData.save();
       setState(() {});
     }
   }
