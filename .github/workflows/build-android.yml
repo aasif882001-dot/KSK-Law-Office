@@ -7,10 +7,15 @@ on:
       - version-1.1.1
     paths:
       - 'ksk_law_office_app/**'
+      - 'firestore.rules'
       - '.github/workflows/build-android.yml'
 
 permissions:
   contents: read
+
+concurrency:
+  group: ksk-law-office-v1-1-1
+  cancel-in-progress: true
 
 jobs:
   build:
