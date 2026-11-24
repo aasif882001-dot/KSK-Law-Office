@@ -419,9 +419,9 @@ class _HomePageState extends State<HomePage> {
   int tab = 0;
   bool todayOnly = false;
   bool get isAdmin => widget.role == UserRole.admin;
-  List<Map<String, dynamic>> get visibleTasks => isAdmin ? OfficeData.tasks : OfficeData.tasks.where((t) => t['assignee'] == widget.advocateName).toList();
-  List<Map<String, dynamic>> get visibleHearings => isAdmin ? OfficeData.hearings : OfficeData.hearings.where((h) => h['advocate'] == widget.advocateName).toList();
-  List<Map<String, dynamic>> get visibleCases => isAdmin ? OfficeData.cases : OfficeData.cases.where((c) => c['advocate'] == widget.advocateName).toList();
+  List<Map<String, dynamic>> get visibleTasks => isAdmin ? OfficeData.tasks : OfficeData.tasks.where((t) => t['assigneeUid'] == widget.userId).toList();
+  List<Map<String, dynamic>> get visibleHearings => isAdmin ? OfficeData.hearings : OfficeData.hearings.where((h) => h['advocateUid'] == widget.userId).toList();
+  List<Map<String, dynamic>> get visibleCases => isAdmin ? OfficeData.cases : OfficeData.cases.where((c) => c['advocateUid'] == widget.userId).toList();
   int countTasks(String status) => visibleTasks.where((t) => t['status'] == status).length;
   List<String> get tabs => isAdmin ? ['Home', 'Tasks', 'Cases', 'Hearings', 'Office'] : ['Home', 'Tasks', 'Cases', 'Hearings'];
 
@@ -458,7 +458,7 @@ class _HomePageState extends State<HomePage> {
       Text(DateTime.now().toString().split(' ').first, style: const TextStyle(color: Colors.black54)),
       const SizedBox(height: 18),
       GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.55, children: [
-        stat('Total tasks', '${visibleTasks.length}', Icons.assignment, navy), stat('Pending', '${countTasks('Pending')}', Icons.pending_actions, Colors.orange.shade800), stat('Cases', '${OfficeData.cases.length}', Icons.folder, blue), stat('Upcoming hearings', '${upcoming.length}', Icons.event, Colors.deepPurple),
+        stat('Total tasks', '${visibleTasks.length}', Icons.assignment, navy), stat('Pending', '${countTasks('Pending')}', Icons.pending_actions, Colors.orange.shade800), stat('Cases', '${visibleCases.length}', Icons.folder, blue), stat('Upcoming hearings', '${upcoming.length}', Icons.event, Colors.deepPurple),
       ]),
       const SizedBox(height: 20),
       const Text('Upcoming hearing dates', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
