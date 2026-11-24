@@ -88,6 +88,15 @@ class OfficeData {
     final db = FirebaseFirestore.instance;
     final subscriptions = <StreamSubscription<dynamic>>[];
 
+    // Never expose another account's locally cached office data while an advocate is signing in.
+    if (!isAdmin) {
+      tasks = [];
+      cases = [];
+      hearings = [];
+      clients = [];
+      entries = [];
+    }
+
     void listenRecords(String collection, List<Map<String, dynamic>> target, {String? assignmentField}) {
       Query<Map<String, dynamic>> query = db.collection(collection);
       if (!isAdmin && assignmentField != null) {
