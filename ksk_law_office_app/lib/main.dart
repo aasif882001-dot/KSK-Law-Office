@@ -653,7 +653,7 @@ class _HomePageState extends State<HomePage> {
         if (assignedUid == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose an approved advocate name from the active office advocate list.'))); return; }
         record = {'caseNumber':values[0], 'title':values[1], 'court':values[2], 'party':values[3], 'advocate':values[4], 'advocateUid':assignedUid, 'nextHearing':values[5], 'notes':values[6]};
         OfficeData.cases.insert(0,record);
-        if (values[5].trim().isNotEmpty) OfficeData.hearings.add({'caseNumber':values[0], 'court':values[2], 'date':values[5], 'time':'', 'purpose':'Next hearing', 'advocate':values[4]});
+        if (values[5].trim().isNotEmpty) OfficeData.hearings.add({'caseNumber':values[0], 'court':values[2], 'date':values[5], 'time':'', 'purpose':'Next hearing', 'advocate':values[4], 'advocateUid':assignedUid});
         break;
       case 'hearing':
         final assignedUid = OfficeData.advocateUid(values[5]);
@@ -695,7 +695,7 @@ class _HomePageState extends State<HomePage> {
   }
   String _kindTitle(String kind) => {'task':'Assign new task','case':'Add case','hearing':'Add hearing date','client':'Add client','entry':'Add account entry','advocate':'Add advocate'}[kind]!;
   Future<void> _delete(List<Map<String,dynamic>> list, Map<String,dynamic> item) async {
-    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Delete record?'), content: const Text('This record will be removed from this device.'), actions: [TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Delete'))]));
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Delete record?'), content: const Text('This record will be removed from the office records.'), actions: [TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Delete'))]));
     if (ok == true) {
       final collection = identical(list, OfficeData.tasks) ? 'tasks'
         : identical(list, OfficeData.cases) ? 'cases'
